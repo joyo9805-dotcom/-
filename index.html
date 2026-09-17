@@ -1,0 +1,999 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>우리의 전국 동네 정복 지도</title>
+    
+    <!-- 네이버 지도 API -->
+    <script type="text/javascript" src="https://oapi.map.naver.com/openapi/v3/maps.js?ncpKeyId=6dnj1t3omk"></script>
+    
+    <!-- Firebase 실시간 데이터베이스 SDK -->
+    <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-app.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-database.js"></script>
+    
+    <style>
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+            font-family: -apple-system, BlinkMacSystemFont, "Apple SD Gothic Neo", "Pretendard", "Malgun Gothic", sans-serif;
+            -webkit-tap-highlight-color: transparent;
+        }
+
+        body, html {
+            width: 100%;
+            height: 100%;
+            overflow: hidden;
+            background-color: #f8f9fa;
+        }
+
+        #map {
+            width: 100%;
+            height: 100%;
+            z-index: 1;
+        }
+
+        /* 상단 대시보드 */
+        .dashboard {
+            position: absolute;
+            top: 16px;
+            left: 16px;
+            z-index: 100;
+            background: rgba(255, 255, 255, 0.95);
+            backdrop-filter: blur(8px);
+            padding: 14px 18px;
+            border-radius: 16px;
+            box-shadow: 0 8px 24px rgba(0, 0, 0, 0.12);
+            min-width: 230px;
+        }
+
+        .dashboard h1 {
+            font-size: 15px;
+            font-weight: 700;
+            color: #1a1a1a;
+            margin-bottom: 6px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+        }
+
+        .sync-badge {
+            font-size: 11px;
+            background-color: #e6fcf5;
+            color: #0ca678;
+            padding: 2px 6px;
+            border-radius: 6px;
+            font-weight: 600;
+        }
+
+        .dashboard .stat-box {
+            display: flex;
+            align-items: baseline;
+            gap: 6px;
+            margin-bottom: 8px;
+        }
+
+        .dashboard .stat-num {
+            font-size: 22px;
+            font-weight: 800;
+            color: #ff3366;
+        }
+
+        .dashboard .stat-total {
+            font-size: 13px;
+            color: #888;
+        }
+
+        .dashboard .progress-bar {
+            width: 100%;
+            height: 6px;
+            background-color: #eee;
+            border-radius: 4px;
+            overflow: hidden;
+        }
+
+        .dashboard .progress-fill {
+            height: 100%;
+            width: 0%;
+            background: linear-gradient(90deg, #ff758c 0%, #ff3366 100%);
+            transition: width 0.4s ease;
+        }
+
+        /* 방문 횟수 범례 (우측 하단) */
+        .legend-card {
+            position: absolute;
+            right: 16px;
+            bottom: 24px;
+            z-index: 90;
+            background: rgba(255, 255, 255, 0.92);
+            backdrop-filter: blur(6px);
+            padding: 10px 14px;
+            border-radius: 14px;
+            box-shadow: 0 4px 16px rgba(0,0,0,0.1);
+            font-size: 11px;
+            color: #495057;
+            display: flex;
+            flex-direction: column;
+            gap: 6px;
+        }
+        .legend-title {
+            font-weight: 700;
+            margin-bottom: 2px;
+            color: #212529;
+        }
+        .legend-bar {
+            width: 120px;
+            height: 8px;
+            border-radius: 4px;
+            background: linear-gradient(90deg, #ffe0e6 0%, #ff3366 50%, #4a0011 100%);
+        }
+        .legend-labels {
+            display: flex;
+            justify-content: space-between;
+            font-size: 10px;
+            color: #868e96;
+        }
+
+        /* 하단 상세/기록 카드 */
+        .bottom-card {
+            position: absolute;
+            bottom: -750px;
+            left: 50%;
+            transform: translateX(-50%);
+            width: 94%;
+            max-width: 480px;
+            max-height: 85vh;
+            background: rgba(255, 255, 255, 0.98);
+            backdrop-filter: blur(12px);
+            padding: 20px;
+            border-radius: 24px;
+            box-shadow: 0 12px 36px rgba(0, 0, 0, 0.22);
+            z-index: 150;
+            transition: bottom 0.35s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+        }
+
+        .bottom-card.active {
+            bottom: 20px;
+        }
+
+        .card-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .card-title-box {
+            display: flex;
+            align-items: baseline;
+            gap: 8px;
+        }
+
+        .card-title {
+            font-size: 18px;
+            font-weight: 800;
+            color: #212529;
+        }
+
+        .card-count-badge {
+            font-size: 12px;
+            font-weight: 700;
+            color: #ff3366;
+            background: #fff0f3;
+            padding: 2px 8px;
+            border-radius: 10px;
+        }
+
+        .card-close {
+            background: none;
+            border: none;
+            font-size: 20px;
+            color: #868e96;
+            cursor: pointer;
+            padding: 4px;
+        }
+
+        /* 상단 액션 버튼 */
+        .btn-add-visit {
+            width: 100%;
+            height: 44px;
+            background: linear-gradient(90deg, #ff758c 0%, #ff3366 100%);
+            color: #fff;
+            border: none;
+            border-radius: 14px;
+            font-size: 14px;
+            font-weight: 700;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 6px;
+            box-shadow: 0 4px 12px rgba(255, 51, 102, 0.25);
+            transition: transform 0.15s;
+        }
+
+        .btn-add-visit:active {
+            transform: scale(0.98);
+        }
+
+        /* 새 방문 작성 박스 */
+        .new-visit-box {
+            display: none;
+            flex-direction: column;
+            gap: 10px;
+            padding: 14px;
+            background: #fff5f7;
+            border: 1.5px solid #ffccd5;
+            border-radius: 16px;
+            animation: fadeIn 0.25s ease-out;
+        }
+
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(-6px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+
+        .new-visit-title {
+            font-size: 13px;
+            font-weight: 700;
+            color: #c92a2a;
+            display: flex;
+            justify-content: space-between;
+        }
+
+        .memo-textarea {
+            width: 100%;
+            height: 70px;
+            padding: 10px 12px;
+            border: 1px solid #ced4da;
+            border-radius: 12px;
+            font-size: 13px;
+            resize: none;
+            outline: none;
+            background: #ffffff;
+        }
+
+        .memo-textarea:focus {
+            border-color: #ff3366;
+        }
+
+        /* 사진 미리보기 */
+        .photo-preview-container {
+            position: relative;
+            width: 100%;
+            height: 150px;
+            border-radius: 12px;
+            overflow: hidden;
+            background-color: #f1f3f5;
+            display: none;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .photo-preview-container img {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+        }
+
+        .btn-remove-photo {
+            position: absolute;
+            top: 8px;
+            right: 8px;
+            background: rgba(0, 0, 0, 0.65);
+            color: #fff;
+            border: none;
+            border-radius: 50%;
+            width: 26px;
+            height: 26px;
+            cursor: pointer;
+            font-size: 12px;
+        }
+
+        .btn-upload-label {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 6px;
+            width: 100%;
+            padding: 9px;
+            background: #fff;
+            border: 1px dashed #ffa8ba;
+            border-radius: 10px;
+            font-size: 12px;
+            font-weight: 600;
+            color: #d6336c;
+            cursor: pointer;
+        }
+
+        .form-btns {
+            display: flex;
+            gap: 8px;
+        }
+
+        .btn-save-record {
+            flex: 2;
+            padding: 10px;
+            background: #ff3366;
+            color: #fff;
+            border: none;
+            border-radius: 10px;
+            font-size: 13px;
+            font-weight: 700;
+            cursor: pointer;
+        }
+
+        .btn-cancel-record {
+            flex: 1;
+            padding: 10px;
+            background: #e9ecef;
+            color: #495057;
+            border: none;
+            border-radius: 10px;
+            font-size: 13px;
+            font-weight: 600;
+            cursor: pointer;
+        }
+
+        /* 방문 타임라인 목록 */
+        .visits-container {
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+            overflow-y: auto;
+            max-height: 48vh;
+            padding-right: 4px;
+        }
+
+        .visit-item-card {
+            background: #f8f9fa;
+            border: 1px solid #edf2f7;
+            border-radius: 16px;
+            padding: 14px;
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+            box-shadow: 0 2px 6px rgba(0,0,0,0.03);
+        }
+
+        .visit-item-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .visit-badge {
+            font-size: 12px;
+            font-weight: 800;
+            color: #ffffff;
+            background: #ff3366;
+            padding: 3px 8px;
+            border-radius: 8px;
+        }
+
+        .visit-date {
+            font-size: 11px;
+            color: #868e96;
+        }
+
+        .visit-memo {
+            font-size: 13px;
+            color: #333;
+            line-height: 1.45;
+            white-space: pre-wrap;
+            word-break: break-word;
+        }
+
+        .visit-photo {
+            width: 100%;
+            height: 180px;
+            border-radius: 12px;
+            object-fit: cover;
+            background-color: #eee;
+        }
+
+        .btn-delete-visit {
+            align-self: flex-end;
+            background: none;
+            border: none;
+            color: #adb5bd;
+            font-size: 11px;
+            cursor: pointer;
+            padding: 2px 4px;
+        }
+        .btn-delete-visit:hover {
+            color: #fa5252;
+        }
+
+        .empty-visits {
+            text-align: center;
+            color: #adb5bd;
+            font-size: 13px;
+            padding: 24px 0;
+        }
+
+        .file-input {
+            display: none;
+        }
+
+        /* 로딩 스피너 */
+        #loading {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(255, 255, 255, 0.9);
+            z-index: 200;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            font-size: 15px;
+            font-weight: 600;
+            color: #333;
+        }
+
+        .spinner {
+            width: 36px;
+            height: 36px;
+            border: 4px solid #f3f3f3;
+            border-top: 4px solid #ff3366;
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+            margin-bottom: 12px;
+        }
+
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+    </style>
+</head>
+<body>
+
+    <div id="loading">
+        <div class="spinner"></div>
+        <div>지도 및 실시간 데이터를 동기화 중입니다...</div>
+    </div>
+
+    <!-- 대시보드 -->
+    <div class="dashboard">
+        <h1>
+            📍 정복한 지역
+            <span class="sync-badge">실시간 공유</span>
+        </h1>
+        <div class="stat-box">
+            <span class="stat-num" id="conquered-count">0</span>
+            <span class="stat-total" id="total-count">/ 계산 중...</span>
+        </div>
+        <div class="progress-bar">
+            <div class="progress-fill" id="progress-fill"></div>
+        </div>
+    </div>
+
+    <!-- 범례 표시 -->
+    <div class="legend-card">
+        <div class="legend-title">방문 빈도 단계</div>
+        <div class="legend-bar"></div>
+        <div class="legend-labels">
+            <span>1회</span>
+            <span>5회</span>
+            <span>10회+</span>
+        </div>
+    </div>
+
+    <!-- 하단 상세 기록 카드 -->
+    <div class="bottom-card" id="bottom-card">
+        <div class="card-header">
+            <div class="card-title-box">
+                <span class="card-title" id="card-region-name">지역 이름</span>
+                <span class="card-count-badge" id="card-visit-count">0회 방문</span>
+            </div>
+            <button class="card-close" onclick="closeBottomCard()">✕</button>
+        </div>
+
+        <!-- 새 방문 추가하기 토글 버튼 -->
+        <button class="btn-add-visit" id="btn-show-add" onclick="showNewVisitForm()">
+            ➕ 새 방문 기록 추가하기
+        </button>
+
+        <!-- 새 방문 작성 영역 -->
+        <div class="new-visit-box" id="new-visit-box">
+            <div class="new-visit-title">
+                <span id="new-visit-badge-title">새로운 방문 등록</span>
+                <span style="font-size: 11px; color: #868e96; font-weight: normal;">오늘의 추억</span>
+            </div>
+            <textarea class="memo-textarea" id="memo-input" placeholder="이번 방문의 소중한 순간이나 맛집을 기록해 보세요..."></textarea>
+            
+            <!-- 사진 미리보기 -->
+            <div class="photo-preview-container" id="photo-preview-container">
+                <img id="photo-preview" src="" alt="첨부 사진">
+                <button class="btn-remove-photo" onclick="removeAttachedPhoto()">✕</button>
+            </div>
+
+            <!-- 사진 선택 버튼 -->
+            <label class="btn-upload-label" id="btn-upload-label" for="photo-file-input">
+                📷 사진 첨부하기
+            </label>
+            <input type="file" id="photo-file-input" class="file-input" accept="image/*" onchange="handlePhotoUpload(event)">
+
+            <div class="form-btns">
+                <button class="btn-save-record" onclick="saveNewVisit()">등록하기</button>
+                <button class="btn-cancel-record" onclick="hideNewVisitForm()">취소</button>
+            </div>
+        </div>
+
+        <!-- 방문 타임라인 목록 -->
+        <div class="visits-container" id="visits-container">
+            <!-- 자바스크립트로 방문 카드들이 최신순(N번째)으로 렌더링됩니다 -->
+        </div>
+    </div>
+
+    <div id="map"></div>
+
+    <script>
+        // ==========================================
+        // 1. Firebase 설정
+        // ==========================================
+        const firebaseConfig = {
+            apiKey: "AIzaSyD8A3kHzvgVkWSFQUKqhz6hjy2rVFJ6D3w",
+            authDomain: "our-couple-map.firebaseapp.com",
+            databaseURL: "https://our-couple-map-default-rtdb.firebaseio.com",
+            projectId: "our-couple-map",
+            storageBucket: "our-couple-map.firebasestorage.app",
+            messagingSenderId: "642556153614",
+            appId: "1:642556153614:web:6f9f761a997dbf15af515f"
+        };
+
+        firebase.initializeApp(firebaseConfig);
+        const db = firebase.database();
+        const dbRef = db.ref('shared_conquered_regions');
+
+        // ==========================================
+        // 2. 지도 초기화
+        // ==========================================
+        const map = new naver.maps.Map('map', {
+            center: new naver.maps.LatLng(36.3504, 127.8845),
+            zoom: 7,
+            minZoom: 6,
+            maxZoom: 18,
+            mapTypeControl: false,
+            scaleControl: true
+        });
+
+        let conqueredRegions = {};
+        let totalRegionCount = 0;
+        const polygons = [];
+        let selectedCode = null;
+        let selectedName = null;
+        let currentPhotoBase64 = null;
+
+        // ==========================================
+        // 방향 2: 방문 횟수에 따른 10단계 색상 스펙트럼
+        // ==========================================
+        const visitColorLevels = [
+            { fill: '#ffccd5', stroke: '#ff99aa', fillOpacity: 0.25 }, // 1회
+            { fill: '#ffa8ba', stroke: '#ff8099', fillOpacity: 0.35 }, // 2회
+            { fill: '#ff758f', stroke: '#f75c7e', fillOpacity: 0.45 }, // 3회
+            { fill: '#ff4d6d', stroke: '#e83e60', fillOpacity: 0.55 }, // 4회
+            { fill: '#ff3366', stroke: '#d92554', fillOpacity: 0.65 }, // 5회
+            { fill: '#e61e50', stroke: '#be123c', fillOpacity: 0.72 }, // 6회
+            { fill: '#c9184a', stroke: '#a61e4d', fillOpacity: 0.78 }, // 7회
+            { fill: '#a4133c', stroke: '#8a0e30', fillOpacity: 0.84 }, // 8회
+            { fill: '#800f2f', stroke: '#5f0923', fillOpacity: 0.90 }, // 9회
+            { fill: '#590d22', stroke: '#360613', fillOpacity: 0.96 }  // 10회 이상
+        ];
+
+        const defaultStyle = {
+            strokeColor: '#777777',
+            strokeOpacity: 0.4,
+            strokeWeight: 1,
+            fillColor: '#ffffff',
+            fillOpacity: 0.08,
+            clickable: true
+        };
+
+        const hoverStyle = {
+            strokeColor: '#111111',
+            strokeOpacity: 0.9,
+            strokeWeight: 2.2,
+            fillOpacity: 0.35
+        };
+
+        const selectedOutlineStyle = {
+            strokeColor: '#228be6',
+            strokeOpacity: 1.0,
+            strokeWeight: 3
+        };
+
+        function getRegionVisitCount(code) {
+            const data = conqueredRegions[code];
+            if (!data) return 0;
+            if (data.visits) {
+                return Object.keys(data.visits).length;
+            }
+            // 기존 단일 방문 호환
+            return 1;
+        }
+
+        function getStyleForVisits(count) {
+            if (count <= 0) return defaultStyle;
+            const levelIndex = Math.min(count, 10) - 1;
+            const styleConf = visitColorLevels[levelIndex];
+            return {
+                strokeColor: styleConf.stroke,
+                strokeOpacity: 0.9,
+                strokeWeight: 1.5,
+                fillColor: styleConf.fill,
+                fillOpacity: styleConf.fillOpacity,
+                clickable: true
+            };
+        }
+
+        // ==========================================
+        // 3. 전국 시군구 GeoJSON 로드
+        // ==========================================
+        const GEOJSON_URL = 'https://raw.githubusercontent.com/southkorea/southkorea-maps/master/kostat/2018/json/skorea-municipalities-2018-geo.json';
+
+        fetch(GEOJSON_URL)
+            .then(res => res.json())
+            .then(geojson => {
+                totalRegionCount = geojson.features.length;
+                document.getElementById('total-count').textContent = `/ ${totalRegionCount}개 구역`;
+
+                geojson.features.forEach(feature => {
+                    const code = feature.properties.code || feature.properties.SIG_CD;
+                    const name = feature.properties.name || feature.properties.SIG_KOR_NM;
+                    createPolygonsFromGeometry(feature.geometry, code, name);
+                });
+
+                listenToDatabaseChanges();
+                document.getElementById('loading').style.display = 'none';
+            })
+            .catch(err => {
+                console.error(err);
+                document.getElementById('loading').innerHTML = '<div style="color: #ff3366;">데이터를 불러오지 못했습니다.</div>';
+            });
+
+        function createPolygonsFromGeometry(geometry, code, name) {
+            const isMulti = geometry.type === 'MultiPolygon';
+            const rawCoords = isMulti ? geometry.coordinates : [geometry.coordinates];
+
+            rawCoords.forEach(polygonCoords => {
+                const paths = polygonCoords.map(ring => {
+                    return ring.map(coord => new naver.maps.LatLng(coord[1], coord[0]));
+                });
+
+                const polygon = new naver.maps.Polygon({
+                    map: map,
+                    paths: paths,
+                    ...defaultStyle
+                });
+
+                polygon.regionCode = code;
+                polygon.regionName = name;
+                polygons.push(polygon);
+
+                // 마우스 호버 시 강조
+                naver.maps.Event.addListener(polygon, 'mouseover', () => {
+                    if (polygon.regionCode !== selectedCode) {
+                        const count = getRegionVisitCount(code);
+                        const baseStyle = getStyleForVisits(count);
+                        polygon.setOptions({
+                            ...hoverStyle,
+                            fillColor: count > 0 ? baseStyle.fillColor : '#ffffff'
+                        });
+                    }
+                });
+
+                naver.maps.Event.addListener(polygon, 'mouseout', () => {
+                    if (polygon.regionCode !== selectedCode) {
+                        const count = getRegionVisitCount(code);
+                        polygon.setOptions(getStyleForVisits(count));
+                    }
+                });
+
+                // 클릭 시 카드 열기
+                naver.maps.Event.addListener(polygon, 'click', () => {
+                    selectRegion(code, name);
+                });
+            });
+        }
+
+        function selectRegion(code, name) {
+            selectedCode = code;
+            selectedName = name;
+            refreshAllPolygonStyles();
+            openBottomCard(code, name);
+        }
+
+        function refreshAllPolygonStyles() {
+            polygons.forEach(p => {
+                const count = getRegionVisitCount(p.regionCode);
+                const isSelected = p.regionCode === selectedCode;
+
+                let style = { ...getStyleForVisits(count) };
+
+                if (isSelected) {
+                    style.strokeColor = selectedOutlineStyle.strokeColor;
+                    style.strokeOpacity = selectedOutlineStyle.strokeOpacity;
+                    style.strokeWeight = selectedOutlineStyle.strokeWeight;
+                }
+
+                p.setOptions(style);
+            });
+        }
+
+        // ==========================================
+        // 4. 하단 카드 및 방문 기록 렌더링
+        // ==========================================
+        const bottomCard = document.getElementById('bottom-card');
+        const cardTitle = document.getElementById('card-region-name');
+        const cardVisitCount = document.getElementById('card-visit-count');
+        const visitsContainer = document.getElementById('visits-container');
+        const newVisitBox = document.getElementById('new-visit-box');
+        const memoInput = document.getElementById('memo-input');
+        const photoPreviewContainer = document.getElementById('photo-preview-container');
+        const photoPreview = document.getElementById('photo-preview');
+        const btnUploadLabel = document.getElementById('btn-upload-label');
+
+        function openBottomCard(code, name) {
+            cardTitle.textContent = name;
+            hideNewVisitForm();
+
+            const regionData = conqueredRegions[code];
+            const list = extractVisitsList(regionData);
+            const count = list.length;
+
+            cardVisitCount.textContent = `${count}회 방문`;
+            renderVisitsList(list);
+
+            bottomCard.classList.add('active');
+        }
+
+        function extractVisitsList(regionData) {
+            if (!regionData) return [];
+            
+            // 다회차 구조 지원
+            if (regionData.visits) {
+                const entries = Object.entries(regionData.visits).map(([id, val]) => ({
+                    id: id,
+                    memo: val.memo || '',
+                    photo: val.photo || null,
+                    timestamp: val.timestamp || 0
+                }));
+                // 과거 -> 최신순으로 정렬
+                entries.sort((a, b) => a.timestamp - b.timestamp);
+                return entries;
+            }
+
+            // 기존 단일 방문 데이터 마이그레이션 호환
+            if (regionData.timestamp) {
+                return [{
+                    id: 'initial_visit',
+                    memo: regionData.memo || '',
+                    photo: regionData.photo || null,
+                    timestamp: regionData.timestamp
+                }];
+            }
+
+            return [];
+        }
+
+        function renderVisitsList(visitsList) {
+            visitsContainer.innerHTML = '';
+
+            if (visitsList.length === 0) {
+                visitsContainer.innerHTML = `
+                    <div class="empty-visits">
+                        아직 방문 기록이 없습니다.<br>
+                        위의 <b>[새 방문 기록 추가하기]</b> 버튼을 눌러보세요!
+                    </div>`;
+                return;
+            }
+
+            // 최신 방문이 위로 오도록 역순(N번째부터 1번째로) 표시
+            for (let i = visitsList.length - 1; i >= 0; i--) {
+                const item = visitsList[i];
+                const visitNumber = i + 1; // 1부터 시작하는 넘버링
+
+                const dateStr = item.timestamp ? new Date(item.timestamp).toLocaleDateString('ko-KR', {
+                    year: 'numeric',
+                    month: 'long',
+                    day: 'numeric'
+                }) : '날짜 미상';
+
+                const cardEl = document.createElement('div');
+                cardEl.className = 'visit-item-card';
+
+                let photoHtml = '';
+                if (item.photo) {
+                    photoHtml = `<img class="visit-photo" src="${item.photo}" alt="${visitNumber}번째 방문 사진">`;
+                }
+
+                let memoHtml = '';
+                if (item.memo) {
+                    memoHtml = `<div class="visit-memo">${escapeHtml(item.memo)}</div>`;
+                }
+
+                cardEl.innerHTML = `
+                    <div class="visit-item-header">
+                        <span class="visit-badge">${visitNumber}번째 방문</span>
+                        <span class="visit-date">${dateStr}</span>
+                    </div>
+                    ${photoHtml}
+                    ${memoHtml}
+                    <button class="btn-delete-visit" onclick="deleteVisit('${item.id}')">삭제</button>
+                `;
+
+                visitsContainer.appendChild(cardEl);
+            }
+        }
+
+        function escapeHtml(text) {
+            return text
+                .replace(/&/g, "&amp;")
+                .replace(/</g, "&lt;")
+                .replace(/>/g, "&gt;")
+                .replace(/"/g, "&quot;")
+                .replace(/'/g, "&#039;");
+        }
+
+        function closeBottomCard() {
+            bottomCard.classList.remove('active');
+            selectedCode = null;
+            selectedName = null;
+            refreshAllPolygonStyles();
+        }
+
+        // ==========================================
+        // 5. 새 방문 기록 폼 컨트롤 & 추가하기 (방향 1)
+        // ==========================================
+        function showNewVisitForm() {
+            const count = getRegionVisitCount(selectedCode);
+            document.getElementById('new-visit-badge-title').textContent = `${count + 1}번째 방문 기록하기`;
+            newVisitBox.style.display = 'flex';
+            document.getElementById('btn-show-add').style.display = 'none';
+            memoInput.value = '';
+            removeAttachedPhoto();
+            memoInput.focus();
+        }
+
+        function hideNewVisitForm() {
+            newVisitBox.style.display = 'none';
+            document.getElementById('btn-show-add').style.display = 'flex';
+            memoInput.value = '';
+            removeAttachedPhoto();
+        }
+
+        function saveNewVisit() {
+            if (!selectedCode) return;
+
+            const regionRef = db.ref(`shared_conquered_regions/${selectedCode}`);
+            const newVisitKey = regionRef.child('visits').push().key;
+
+            const visitData = {
+                timestamp: firebase.database.ServerValue.TIMESTAMP,
+                memo: memoInput.value.trim(),
+                photo: currentPhotoBase64 || null
+            };
+
+            // 기존 단일 데이터 형식이 있는 경우 자연스럽게 visits 트리로 전환
+            const currentData = conqueredRegions[selectedCode];
+            const updates = {};
+            updates[`name`] = selectedName;
+
+            if (currentData && !currentData.visits && currentData.timestamp) {
+                // 구버전 단일 기록을 1번째 방문으로 보존
+                updates[`visits/first_legacy`] = {
+                    timestamp: currentData.timestamp,
+                    memo: currentData.memo || '',
+                    photo: currentData.photo || null
+                };
+            }
+
+            updates[`visits/${newVisitKey}`] = visitData;
+
+            regionRef.update(updates).then(() => {
+                hideNewVisitForm();
+            });
+        }
+
+        function deleteVisit(visitId) {
+            if (!confirm('이 방문 기록을 삭제할까요?')) return;
+            if (!selectedCode) return;
+
+            const regionData = conqueredRegions[selectedCode];
+            if (!regionData) return;
+
+            const list = extractVisitsList(regionData);
+            
+            // 방문이 1개뿐인데 삭제하는 경우 지역 자체를 미방문으로 초기화
+            if (list.length <= 1) {
+                db.ref(`shared_conquered_regions/${selectedCode}`).remove();
+                return;
+            }
+
+            // 구버전 단일 기록 삭제
+            if (visitId === 'initial_visit') {
+                db.ref(`shared_conquered_regions/${selectedCode}`).remove();
+            } else {
+                db.ref(`shared_conquered_regions/${selectedCode}/visits/${visitId}`).remove();
+            }
+        }
+
+        // ==========================================
+        // 6. 사진 압축 업로드 모듈
+        // ==========================================
+        function handlePhotoUpload(event) {
+            const file = event.target.files[0];
+            if (!file) return;
+
+            const reader = new FileReader();
+            reader.onload = function(e) {
+                const img = new Image();
+                img.onload = function() {
+                    const canvas = document.createElement('canvas');
+                    const MAX_WIDTH = 900;
+                    let width = img.width;
+                    let height = img.height;
+
+                    if (width > MAX_WIDTH) {
+                        height *= MAX_WIDTH / width;
+                        width = MAX_WIDTH;
+                    }
+
+                    canvas.width = width;
+                    canvas.height = height;
+                    const ctx = canvas.getContext('2d');
+                    ctx.drawImage(img, 0, 0, width, height);
+
+                    currentPhotoBase64 = canvas.toDataURL('image/jpeg', 0.65);
+                    photoPreview.src = currentPhotoBase64;
+                    photoPreviewContainer.style.display = 'flex';
+                    btnUploadLabel.style.display = 'none';
+                };
+                img.src = e.target.result;
+            };
+            reader.readAsDataURL(file);
+        }
+
+        function removeAttachedPhoto() {
+            currentPhotoBase64 = null;
+            photoPreview.src = '';
+            photoPreviewContainer.style.display = 'none';
+            btnUploadLabel.style.display = 'flex';
+            document.getElementById('photo-file-input').value = '';
+        }
+
+        // ==========================================
+        // 7. 실시간 동기화 리스너
+        // ==========================================
+        function listenToDatabaseChanges() {
+            dbRef.on('value', snapshot => {
+                conqueredRegions = snapshot.val() || {};
+                refreshAllPolygonStyles();
+                updateDashboard();
+
+                if (selectedCode) {
+                    openBottomCard(selectedCode, selectedName);
+                }
+            });
+        }
+
+        function updateDashboard() {
+            const count = Object.keys(conqueredRegions).length;
+            document.getElementById('conquered-count').textContent = count;
+
+            if (totalRegionCount > 0) {
+                const percentage = ((count / totalRegionCount) * 100).toFixed(1);
+                document.getElementById('progress-fill').style.width = `${percentage}%`;
+            }
+        }
+    </script>
+</body>
+</html>
