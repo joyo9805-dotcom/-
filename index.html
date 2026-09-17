@@ -100,7 +100,7 @@
             transition: width 0.4s ease;
         }
 
-        /* 방문 횟수 범례 (우측 하단) */
+        /* 방문 횟수 범례 */
         .legend-card {
             position: absolute;
             right: 16px;
@@ -254,37 +254,46 @@
             border-color: #ff3366;
         }
 
-        /* 사진 미리보기 */
-        .photo-preview-container {
-            position: relative;
-            width: 100%;
-            height: 150px;
-            border-radius: 12px;
-            overflow: hidden;
-            background-color: #f1f3f5;
+        /* 여러 장 사진 미리보기 컨테이너 (가로 스크롤) */
+        .photos-preview-list {
             display: none;
-            align-items: center;
-            justify-content: center;
+            gap: 8px;
+            overflow-x: auto;
+            padding: 4px 0;
+            white-space: nowrap;
         }
 
-        .photo-preview-container img {
+        .photo-preview-item {
+            position: relative;
+            width: 80px;
+            height: 80px;
+            flex-shrink: 0;
+            border-radius: 10px;
+            overflow: hidden;
+            background-color: #eee;
+        }
+
+        .photo-preview-item img {
             width: 100%;
             height: 100%;
             object-fit: cover;
         }
 
-        .btn-remove-photo {
+        .btn-delete-preview {
             position: absolute;
-            top: 8px;
-            right: 8px;
+            top: 4px;
+            right: 4px;
             background: rgba(0, 0, 0, 0.65);
             color: #fff;
             border: none;
             border-radius: 50%;
-            width: 26px;
-            height: 26px;
+            width: 20px;
+            height: 20px;
+            font-size: 10px;
             cursor: pointer;
-            font-size: 12px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
         }
 
         .btn-upload-label {
@@ -349,7 +358,7 @@
             padding: 14px;
             display: flex;
             flex-direction: column;
-            gap: 8px;
+            gap: 10px;
             box-shadow: 0 2px 6px rgba(0,0,0,0.03);
         }
 
@@ -381,12 +390,27 @@
             word-break: break-word;
         }
 
-        .visit-photo {
-            width: 100%;
-            height: 180px;
+        /* 방문 카드의 가로 슬라이더 갤러리 */
+        .visit-gallery {
+            display: flex;
+            gap: 8px;
+            overflow-x: auto;
+            scroll-snap-type: x mandatory;
             border-radius: 12px;
+            padding-bottom: 4px;
+        }
+
+        .gallery-photo {
+            flex: 0 0 100%;
+            height: 200px;
             object-fit: cover;
+            border-radius: 12px;
+            scroll-snap-align: center;
             background-color: #eee;
+        }
+
+        .visit-gallery.multiple-photos .gallery-photo {
+            flex: 0 0 85%;
         }
 
         .btn-delete-visit {
@@ -499,21 +523,18 @@
         <div class="new-visit-box" id="new-visit-box">
             <div class="new-visit-title">
                 <span id="new-visit-badge-title">새로운 방문 등록</span>
-                <span style="font-size: 11px; color: #868e96; font-weight: normal;">오늘의 추억</span>
+                <span id="photo-count-info" style="font-size: 11px; color: #868e96; font-weight: normal;">사진 0장 선택됨</span>
             </div>
             <textarea class="memo-textarea" id="memo-input" placeholder="이번 방문의 소중한 순간이나 맛집을 기록해 보세요..."></textarea>
             
-            <!-- 사진 미리보기 -->
-            <div class="photo-preview-container" id="photo-preview-container">
-                <img id="photo-preview" src="" alt="첨부 사진">
-                <button class="btn-remove-photo" id="btn-remove-photo">✕</button>
-            </div>
+            <!-- 다중 사진 미리보기 목록 -->
+            <div class="photos-preview-list" id="photos-preview-list"></div>
 
-            <!-- 사진 선택 버튼 -->
+            <!-- 사진 선택 버튼 (multiple 속성) -->
             <label class="btn-upload-label" id="btn-upload-label" for="photo-file-input">
-                📷 사진 첨부하기
+                📷 사진 첨부하기 (여러 장 가능)
             </label>
-            <input type="file" id="photo-file-input" class="file-input" accept="image/*">
+            <input type="file" id="photo-file-input" class="file-input" accept="image/*" multiple>
 
             <div class="form-btns">
                 <button class="btn-save-record" id="btn-save-record">등록하기</button>
@@ -564,20 +585,20 @@
         const polygons = [];
         let selectedCode = null;
         let selectedName = null;
-        let currentPhotoBase64 = null;
+        let currentPhotosArray = []; // 현재 작성 중인 여러 장의 사진 base64 배열
 
         // 10단계 점진적 색상 스펙트럼
         const visitColorLevels = [
-            { fill: '#ffccd5', stroke: '#ff99aa', fillOpacity: 0.25 }, // 1회
-            { fill: '#ffa8ba', stroke: '#ff8099', fillOpacity: 0.35 }, // 2회
-            { fill: '#ff758f', stroke: '#f75c7e', fillOpacity: 0.45 }, // 3회
-            { fill: '#ff4d6d', stroke: '#e83e60', fillOpacity: 0.55 }, // 4회
-            { fill: '#ff3366', stroke: '#d92554', fillOpacity: 0.65 }, // 5회
-            { fill: '#e61e50', stroke: '#be123c', fillOpacity: 0.72 }, // 6회
-            { fill: '#c9184a', stroke: '#a61e4d', fillOpacity: 0.78 }, // 7회
-            { fill: '#a4133c', stroke: '#8a0e30', fillOpacity: 0.84 }, // 8회
-            { fill: '#800f2f', stroke: '#5f0923', fillOpacity: 0.90 }, // 9회
-            { fill: '#590d22', stroke: '#360613', fillOpacity: 0.96 }  // 10회 이상
+            { fill: '#ffccd5', stroke: '#ff99aa', fillOpacity: 0.25 },
+            { fill: '#ffa8ba', stroke: '#ff8099', fillOpacity: 0.35 },
+            { fill: '#ff758f', stroke: '#f75c7e', fillOpacity: 0.45 },
+            { fill: '#ff4d6d', stroke: '#e83e60', fillOpacity: 0.55 },
+            { fill: '#ff3366', stroke: '#d92554', fillOpacity: 0.65 },
+            { fill: '#e61e50', stroke: '#be123c', fillOpacity: 0.72 },
+            { fill: '#c9184a', stroke: '#a61e4d', fillOpacity: 0.78 },
+            { fill: '#a4133c', stroke: '#8a0e30', fillOpacity: 0.84 },
+            { fill: '#800f2f', stroke: '#5f0923', fillOpacity: 0.90 },
+            { fill: '#590d22', stroke: '#360613', fillOpacity: 0.96 }
         ];
 
         const defaultStyle = {
@@ -602,28 +623,35 @@
             strokeWeight: 3
         };
 
-        // 기존 데이터 구조 + 신규 데이터 구조 완벽 호환 추출기
+        // 데이터 추출기: photo(단일 문자열)와 photos(배열) 둘 다 완벽 호환
         function extractVisitsList(regionData) {
             if (!regionData) return [];
 
-            // 신규 visits 구조인 경우
             if (regionData.visits && typeof regionData.visits === 'object') {
-                const list = Object.entries(regionData.visits).map(([id, val]) => ({
-                    id: id,
-                    memo: val.memo || '',
-                    photo: val.photo || null,
-                    timestamp: val.timestamp || 0
-                }));
+                const list = Object.entries(regionData.visits).map(([id, val]) => {
+                    let photoList = [];
+                    if (Array.isArray(val.photos)) {
+                        photoList = val.photos;
+                    } else if (val.photo) {
+                        photoList = [val.photo];
+                    }
+
+                    return {
+                        id: id,
+                        memo: val.memo || '',
+                        photos: photoList,
+                        timestamp: val.timestamp || 0
+                    };
+                });
                 list.sort((a, b) => a.timestamp - b.timestamp);
                 return list;
             }
 
-            // 기존 단일 방문 구조인 경우 (데이터 보존)
             if (regionData.timestamp || regionData.memo || regionData.photo) {
                 return [{
                     id: 'legacy_initial',
                     memo: regionData.memo || '',
-                    photo: regionData.photo || null,
+                    photos: regionData.photo ? [regionData.photo] : [],
                     timestamp: regionData.timestamp || Date.now()
                 }];
             }
@@ -753,18 +781,15 @@
         const newVisitBox = document.getElementById('new-visit-box');
         const btnShowAdd = document.getElementById('btn-show-add');
         const memoInput = document.getElementById('memo-input');
-        const photoPreviewContainer = document.getElementById('photo-preview-container');
-        const photoPreview = document.getElementById('photo-preview');
-        const btnUploadLabel = document.getElementById('btn-upload-label');
+        const photosPreviewList = document.getElementById('photos-preview-list');
+        const photoCountInfo = document.getElementById('photo-count-info');
         const photoFileInput = document.getElementById('photo-file-input');
 
-        // 이벤트 리스너 등록
         document.getElementById('btn-close-card').addEventListener('click', closeBottomCard);
         btnShowAdd.addEventListener('click', showNewVisitForm);
         document.getElementById('btn-cancel-record').addEventListener('click', hideNewVisitForm);
         document.getElementById('btn-save-record').addEventListener('click', saveNewVisit);
-        document.getElementById('btn-remove-photo').addEventListener('click', removeAttachedPhoto);
-        photoFileInput.addEventListener('change', handlePhotoUpload);
+        photoFileInput.addEventListener('change', handleMultiPhotosUpload);
 
         function openBottomCard(code, name) {
             cardTitle.textContent = name;
@@ -792,7 +817,6 @@
                 return;
             }
 
-            // 최신 방문이 위로 오도록 역순 렌더링
             for (let i = visitsList.length - 1; i >= 0; i--) {
                 const item = visitsList[i];
                 const visitNumber = i + 1;
@@ -806,9 +830,12 @@
                 const cardEl = document.createElement('div');
                 cardEl.className = 'visit-item-card';
 
-                let photoHtml = '';
-                if (item.photo) {
-                    photoHtml = `<img class="visit-photo" src="${item.photo}" alt="${visitNumber}번째 방문 사진">`;
+                // 여러 장의 사진 렌더링 (가로 스크롤 갤러리)
+                let galleryHtml = '';
+                if (item.photos && item.photos.length > 0) {
+                    const multiClass = item.photos.length > 1 ? 'multiple-photos' : '';
+                    const imgs = item.photos.map(p => `<img class="gallery-photo" src="${p}" alt="방문 사진">`).join('');
+                    galleryHtml = `<div class="visit-gallery ${multiClass}">${imgs}</div>`;
                 }
 
                 let memoHtml = '';
@@ -821,12 +848,11 @@
                         <span class="visit-badge">${visitNumber}번째 방문</span>
                         <span class="visit-date">${dateStr}</span>
                     </div>
-                    ${photoHtml}
+                    ${galleryHtml}
                     ${memoHtml}
                     <button class="btn-delete-visit" data-visit-id="${item.id}">기록 삭제</button>
                 `;
 
-                // 개별 삭제 버튼 이벤트
                 cardEl.querySelector('.btn-delete-visit').addEventListener('click', function() {
                     deleteVisit(item.id);
                 });
@@ -857,7 +883,7 @@
             newVisitBox.style.display = 'flex';
             btnShowAdd.style.display = 'none';
             memoInput.value = '';
-            removeAttachedPhoto();
+            clearAllPhotos();
             memoInput.focus();
         }
 
@@ -865,7 +891,44 @@
             newVisitBox.style.display = 'none';
             btnShowAdd.style.display = 'flex';
             memoInput.value = '';
-            removeAttachedPhoto();
+            clearAllPhotos();
+        }
+
+        function clearAllPhotos() {
+            currentPhotosArray = [];
+            renderPreviewThumbnails();
+            photoFileInput.value = '';
+        }
+
+        function renderPreviewThumbnails() {
+            photosPreviewList.innerHTML = '';
+            if (currentPhotosArray.length === 0) {
+                photosPreviewList.style.display = 'none';
+                photoCountInfo.textContent = '사진 0장 선택됨';
+                return;
+            }
+
+            photosPreviewList.style.display = 'flex';
+            photoCountInfo.textContent = `사진 ${currentPhotosArray.length}장 선택됨`;
+
+            currentPhotosArray.forEach((photoData, idx) => {
+                const thumb = document.createElement('div');
+                thumb.className = 'photo-preview-item';
+                thumb.innerHTML = `
+                    <img src="${photoData}" alt="미리보기 ${idx + 1}">
+                    <button class="btn-delete-preview" data-index="${idx}">✕</button>
+                `;
+                thumb.querySelector('.btn-delete-preview').addEventListener('click', (e) => {
+                    e.stopPropagation();
+                    removePreviewPhoto(idx);
+                });
+                photosPreviewList.appendChild(thumb);
+            });
+        }
+
+        function removePreviewPhoto(index) {
+            currentPhotosArray.splice(index, 1);
+            renderPreviewThumbnails();
         }
 
         function saveNewVisit() {
@@ -879,26 +942,25 @@
             const updates = {};
             updates['name'] = selectedName;
 
-            // 구버전 단일 기록이 visits 트리 밖에 남아있다면 이전 기록을 안전하게 이전
+            // 구버전 단일 데이터 보존
             if (!currentData.visits && existingList.length > 0) {
                 existingList.forEach((legacyItem, idx) => {
                     updates[`visits/legacy_${idx}`] = {
                         timestamp: legacyItem.timestamp,
                         memo: legacyItem.memo,
-                        photo: legacyItem.photo
+                        photos: legacyItem.photos || []
                     };
                 });
-                // 구버전 최상위 필드 정리
                 updates['memo'] = null;
                 updates['photo'] = null;
                 updates['timestamp'] = null;
             }
 
-            // 신규 방문 추가
+            // 다중 사진을 photos 배열로 저장
             updates[`visits/${newVisitKey}`] = {
                 timestamp: firebase.database.ServerValue.TIMESTAMP,
                 memo: memoInput.value.trim(),
-                photo: currentPhotoBase64 || null
+                photos: currentPhotosArray
             };
 
             regionRef.update(updates).then(() => {
@@ -917,7 +979,6 @@
 
             const list = extractVisitsList(regionData);
             if (list.length <= 1) {
-                // 기록이 1개뿐이면 지역 전체 삭제
                 db.ref(`shared_conquered_regions/${selectedCode}`).remove();
                 return;
             }
@@ -929,50 +990,45 @@
             }
         }
 
-        // 사진 압축 업로드
-        function handlePhotoUpload(event) {
-            const file = event.target.files[0];
-            if (!file) return;
+        // ==========================================
+        // 5. 여러 장의 사진 압축 및 처리
+        // ==========================================
+        function handleMultiPhotosUpload(event) {
+            const files = Array.from(event.target.files);
+            if (!files.length) return;
 
-            const reader = new FileReader();
-            reader.onload = function(e) {
-                const img = new Image();
-                img.onload = function() {
-                    const canvas = document.createElement('canvas');
-                    const MAX_WIDTH = 900;
-                    let width = img.width;
-                    let height = img.height;
+            files.forEach(file => {
+                const reader = new FileReader();
+                reader.onload = function(e) {
+                    const img = new Image();
+                    img.onload = function() {
+                        const canvas = document.createElement('canvas');
+                        const MAX_WIDTH = 800; // 다중 사진용 최적 너비
+                        let width = img.width;
+                        let height = img.height;
 
-                    if (width > MAX_WIDTH) {
-                        height *= MAX_WIDTH / width;
-                        width = MAX_WIDTH;
-                    }
+                        if (width > MAX_WIDTH) {
+                            height *= MAX_WIDTH / width;
+                            width = MAX_WIDTH;
+                        }
 
-                    canvas.width = width;
-                    canvas.height = height;
-                    const ctx = canvas.getContext('2d');
-                    ctx.drawImage(img, 0, 0, width, height);
+                        canvas.width = width;
+                        canvas.height = height;
+                        const ctx = canvas.getContext('2d');
+                        ctx.drawImage(img, 0, 0, width, height);
 
-                    currentPhotoBase64 = canvas.toDataURL('image/jpeg', 0.65);
-                    photoPreview.src = currentPhotoBase64;
-                    photoPreviewContainer.style.display = 'flex';
-                    btnUploadLabel.style.display = 'none';
+                        const compressedBase64 = canvas.toDataURL('image/jpeg', 0.6);
+                        currentPhotosArray.push(compressedBase64);
+                        renderPreviewThumbnails();
+                    };
+                    img.src = e.target.result;
                 };
-                img.src = e.target.result;
-            };
-            reader.readAsDataURL(file);
-        }
-
-        function removeAttachedPhoto() {
-            currentPhotoBase64 = null;
-            photoPreview.src = '';
-            photoPreviewContainer.style.display = 'none';
-            btnUploadLabel.style.display = 'flex';
-            photoFileInput.value = '';
+                reader.readAsDataURL(file);
+            });
         }
 
         // ==========================================
-        // 5. Firebase 실시간 동기화
+        // 6. Firebase 실시간 동기화
         // ==========================================
         function listenToDatabaseChanges() {
             dbRef.on('value', snapshot => {
@@ -1004,4 +1060,3 @@
     </script>
 </body>
 </html>
-
