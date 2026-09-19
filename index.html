@@ -199,7 +199,7 @@
         /* 새 방문 추가 버튼 */
         .btn-add-visit {
             width: 100%;
-            height: 46px;
+            height: 44px;
             background: linear-gradient(90deg, #ff758c 0%, #ff3366 100%);
             color: #fff;
             border: none;
@@ -236,6 +236,36 @@
             color: #c92a2a;
             display: flex;
             justify-content: space-between;
+            align-items: center;
+        }
+
+        /* 날짜 선택 인풋 */
+        .date-input-box {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            background: #fff;
+            padding: 8px 12px;
+            border: 1px solid #ced4da;
+            border-radius: 10px;
+            font-size: 13px;
+        }
+
+        .date-input-box span {
+            color: #495057;
+            font-weight: 600;
+            font-size: 12px;
+        }
+
+        .visit-date-picker {
+            border: none;
+            outline: none;
+            font-size: 13px;
+            color: #212529;
+            background: transparent;
+            font-weight: 600;
+            cursor: pointer;
+            flex: 1;
         }
 
         .memo-textarea {
@@ -254,7 +284,7 @@
             border-color: #ff3366;
         }
 
-        /* 여러 장 사진 미리보기 컨테이너 (가로 스크롤) */
+        /* 여러 장 사진 미리보기 컨테이너 */
         .photos-preview-list {
             display: none;
             gap: 8px;
@@ -265,8 +295,8 @@
 
         .photo-preview-item {
             position: relative;
-            width: 80px;
-            height: 80px;
+            width: 76px;
+            height: 76px;
             flex-shrink: 0;
             border-radius: 10px;
             overflow: hidden;
@@ -341,13 +371,41 @@
             cursor: pointer;
         }
 
+        /* 정렬 바 */
+        .sort-bar {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 4px 2px;
+        }
+
+        .sort-title {
+            font-size: 13px;
+            font-weight: 700;
+            color: #495057;
+        }
+
+        .btn-sort-toggle {
+            display: flex;
+            align-items: center;
+            gap: 4px;
+            background: #f1f3f5;
+            border: 1px solid #dee2e6;
+            border-radius: 8px;
+            padding: 4px 8px;
+            font-size: 11px;
+            font-weight: 600;
+            color: #495057;
+            cursor: pointer;
+        }
+
         /* 방문 타임라인 목록 */
         .visits-container {
             display: flex;
             flex-direction: column;
             gap: 12px;
             overflow-y: auto;
-            max-height: 48vh;
+            max-height: 46vh;
             padding-right: 4px;
         }
 
@@ -378,8 +436,9 @@
         }
 
         .visit-date {
-            font-size: 11px;
-            color: #868e96;
+            font-size: 12px;
+            font-weight: 600;
+            color: #495057;
         }
 
         .visit-memo {
@@ -525,12 +584,19 @@
                 <span id="new-visit-badge-title">새로운 방문 등록</span>
                 <span id="photo-count-info" style="font-size: 11px; color: #868e96; font-weight: normal;">사진 0장 선택됨</span>
             </div>
+
+            <!-- 달력 날짜 선택창 -->
+            <div class="date-input-box">
+                <span>🗓️ 방문 날짜</span>
+                <input type="date" class="visit-date-picker" id="visit-date-picker">
+            </div>
+
             <textarea class="memo-textarea" id="memo-input" placeholder="이번 방문의 소중한 순간이나 맛집을 기록해 보세요..."></textarea>
             
             <!-- 다중 사진 미리보기 목록 -->
             <div class="photos-preview-list" id="photos-preview-list"></div>
 
-            <!-- 사진 선택 버튼 (multiple 속성) -->
+            <!-- 사진 선택 버튼 -->
             <label class="btn-upload-label" id="btn-upload-label" for="photo-file-input">
                 📷 사진 첨부하기 (여러 장 가능)
             </label>
@@ -540,6 +606,15 @@
                 <button class="btn-save-record" id="btn-save-record">등록하기</button>
                 <button class="btn-cancel-record" id="btn-cancel-record">취소</button>
             </div>
+        </div>
+
+        <!-- 정렬 헤더 바 -->
+        <div class="sort-bar" id="sort-bar" style="display: none;">
+            <div class="sort-title">방문 타임라인</div>
+            <button class="btn-sort-toggle" id="btn-sort-toggle">
+                <span id="sort-direction-icon">⬇️</span>
+                <span id="sort-direction-text">최신순</span>
+            </button>
         </div>
 
         <!-- 방문 타임라인 목록 -->
@@ -585,7 +660,8 @@
         const polygons = [];
         let selectedCode = null;
         let selectedName = null;
-        let currentPhotosArray = []; // 현재 작성 중인 여러 장의 사진 base64 배열
+        let currentPhotosArray = [];
+        let currentSortOrder = 'desc'; // 'desc'(최신순), 'asc'(오래된순)
 
         // 10단계 점진적 색상 스펙트럼
         const visitColorLevels = [
@@ -623,7 +699,7 @@
             strokeWeight: 3
         };
 
-        // 데이터 추출기: photo(단일 문자열)와 photos(배열) 둘 다 완벽 호환
+        // 데이터 추출기: 날짜 정보(visitDate 또는 timestamp) 정규화
         function extractVisitsList(regionData) {
             if (!regionData) return [];
 
@@ -636,14 +712,28 @@
                         photoList = [val.photo];
                     }
 
+                    // 지정된 방문 날짜(YYYY-MM-DD)를 타임스탬프로 환산
+                    let timeValue = val.timestamp || 0;
+                    if (val.visitDate) {
+                        const parsedTime = new Date(val.visitDate).getTime();
+                        if (!isNaN(parsedTime)) timeValue = parsedTime;
+                    }
+
                     return {
                         id: id,
                         memo: val.memo || '',
                         photos: photoList,
-                        timestamp: val.timestamp || 0
+                        visitDate: val.visitDate || null,
+                        timestamp: timeValue
                     };
                 });
+
+                // 누적 방문 차수 부여를 위해 과거 날짜(오래된 순)로 1차 정렬
                 list.sort((a, b) => a.timestamp - b.timestamp);
+                list.forEach((item, index) => {
+                    item.originalOrder = index + 1; // 1번째, 2번째... 회차 고정
+                });
+
                 return list;
             }
 
@@ -652,7 +742,9 @@
                     id: 'legacy_initial',
                     memo: regionData.memo || '',
                     photos: regionData.photo ? [regionData.photo] : [],
-                    timestamp: regionData.timestamp || Date.now()
+                    visitDate: null,
+                    timestamp: regionData.timestamp || Date.now(),
+                    originalOrder: 1
                 }];
             }
 
@@ -772,7 +864,7 @@
         }
 
         // ==========================================
-        // 4. 하단 카드 UI 제어 & 이벤트 바인딩
+        // 4. 하단 카드 UI 제어 & 정렬
         // ==========================================
         const bottomCard = document.getElementById('bottom-card');
         const cardTitle = document.getElementById('card-region-name');
@@ -784,12 +876,35 @@
         const photosPreviewList = document.getElementById('photos-preview-list');
         const photoCountInfo = document.getElementById('photo-count-info');
         const photoFileInput = document.getElementById('photo-file-input');
+        const visitDatePicker = document.getElementById('visit-date-picker');
+        const sortBar = document.getElementById('sort-bar');
+        const btnSortToggle = document.getElementById('btn-sort-toggle');
+        const sortDirectionIcon = document.getElementById('sort-direction-icon');
+        const sortDirectionText = document.getElementById('sort-direction-text');
 
         document.getElementById('btn-close-card').addEventListener('click', closeBottomCard);
         btnShowAdd.addEventListener('click', showNewVisitForm);
         document.getElementById('btn-cancel-record').addEventListener('click', hideNewVisitForm);
         document.getElementById('btn-save-record').addEventListener('click', saveNewVisit);
         photoFileInput.addEventListener('change', handleMultiPhotosUpload);
+        btnSortToggle.addEventListener('click', toggleSortOrder);
+
+        function toggleSortOrder() {
+            currentSortOrder = (currentSortOrder === 'desc') ? 'asc' : 'desc';
+            if (currentSortOrder === 'desc') {
+                sortDirectionIcon.textContent = '⬇️';
+                sortDirectionText.textContent = '최신순';
+            } else {
+                sortDirectionIcon.textContent = '⬆️';
+                sortDirectionText.textContent = '오래된순';
+            }
+
+            if (selectedCode) {
+                const regionData = conqueredRegions[selectedCode];
+                const list = extractVisitsList(regionData);
+                renderVisitsList(list);
+            }
+        }
 
         function openBottomCard(code, name) {
             cardTitle.textContent = name;
@@ -809,6 +924,7 @@
             visitsContainer.innerHTML = '';
 
             if (!visitsList || visitsList.length === 0) {
+                sortBar.style.display = 'none';
                 visitsContainer.innerHTML = `
                     <div class="empty-visits">
                         아직 방문 기록이 없습니다.<br>
@@ -817,20 +933,32 @@
                 return;
             }
 
-            for (let i = visitsList.length - 1; i >= 0; i--) {
-                const item = visitsList[i];
-                const visitNumber = i + 1;
+            sortBar.style.display = 'flex';
 
-                const dateStr = item.timestamp ? new Date(item.timestamp).toLocaleDateString('ko-KR', {
-                    year: 'numeric',
-                    month: 'long',
-                    day: 'numeric'
-                }) : '방문 완료';
+            // 정렬 적용
+            const displayList = [...visitsList];
+            if (currentSortOrder === 'desc') {
+                displayList.sort((a, b) => b.timestamp - a.timestamp);
+            } else {
+                displayList.sort((a, b) => a.timestamp - b.timestamp);
+            }
+
+            displayList.forEach(item => {
+                let formattedDate = '방문 완료';
+                if (item.visitDate) {
+                    const [y, m, d] = item.visitDate.split('-');
+                    formattedDate = `${y}년 ${parseInt(m, 10)}월 ${parseInt(d, 10)}일`;
+                } else if (item.timestamp) {
+                    formattedDate = new Date(item.timestamp).toLocaleDateString('ko-KR', {
+                        year: 'numeric',
+                        month: 'long',
+                        day: 'numeric'
+                    });
+                }
 
                 const cardEl = document.createElement('div');
                 cardEl.className = 'visit-item-card';
 
-                // 여러 장의 사진 렌더링 (가로 스크롤 갤러리)
                 let galleryHtml = '';
                 if (item.photos && item.photos.length > 0) {
                     const multiClass = item.photos.length > 1 ? 'multiple-photos' : '';
@@ -845,8 +973,8 @@
 
                 cardEl.innerHTML = `
                     <div class="visit-item-header">
-                        <span class="visit-badge">${visitNumber}번째 방문</span>
-                        <span class="visit-date">${dateStr}</span>
+                        <span class="visit-badge">${item.originalOrder}번째 방문</span>
+                        <span class="visit-date">${formattedDate}</span>
                     </div>
                     ${galleryHtml}
                     ${memoHtml}
@@ -858,7 +986,7 @@
                 });
 
                 visitsContainer.appendChild(cardEl);
-            }
+            });
         }
 
         function escapeHtml(text) {
@@ -883,6 +1011,11 @@
             newVisitBox.style.display = 'flex';
             btnShowAdd.style.display = 'none';
             memoInput.value = '';
+            
+            // 오늘 날짜 기본 세팅
+            const today = new Date().toISOString().split('T')[0];
+            visitDatePicker.value = today;
+
             clearAllPhotos();
             memoInput.focus();
         }
@@ -939,6 +1072,8 @@
             const regionRef = db.ref(`shared_conquered_regions/${selectedCode}`);
             const newVisitKey = regionRef.child('visits').push().key;
 
+            const selectedDateValue = visitDatePicker.value || new Date().toISOString().split('T')[0];
+
             const updates = {};
             updates['name'] = selectedName;
 
@@ -956,9 +1091,10 @@
                 updates['timestamp'] = null;
             }
 
-            // 다중 사진을 photos 배열로 저장
+            // 달력에서 선택한 날짜(visitDate)를 함께 저장
             updates[`visits/${newVisitKey}`] = {
-                timestamp: firebase.database.ServerValue.TIMESTAMP,
+                timestamp: new Date(selectedDateValue).getTime(),
+                visitDate: selectedDateValue,
                 memo: memoInput.value.trim(),
                 photos: currentPhotosArray
             };
@@ -1003,7 +1139,7 @@
                     const img = new Image();
                     img.onload = function() {
                         const canvas = document.createElement('canvas');
-                        const MAX_WIDTH = 800; // 다중 사진용 최적 너비
+                        const MAX_WIDTH = 800;
                         let width = img.width;
                         let height = img.height;
 
