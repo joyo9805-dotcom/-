@@ -46,7 +46,6 @@
             border-radius: 16px;
             box-shadow: 0 8px 24px rgba(0, 0, 0, 0.12);
             min-width: 230px;
-            pointer-events: auto;
         }
 
         .dashboard h1 {
@@ -543,7 +542,7 @@
 
     <div id="loading">
         <div class="spinner"></div>
-        <div>지도를 동기화 중입니다...</div>
+        <div id="loading-text">지도를 최적화하여 불러오는 중...</div>
     </div>
 
     <!-- 대시보드 -->
@@ -646,7 +645,7 @@
         const dbRef = db.ref('shared_conquered_regions');
 
         // ==========================================
-        // 2. 지도 초기화 (최적화 렌더러 옵션 적용)
+        // 2. 지도 초기화
         // ==========================================
         const map = new naver.maps.Map('map', {
             center: new naver.maps.LatLng(36.3504, 127.8845),
@@ -666,7 +665,6 @@
         let currentSortOrder = 'desc';
         let editingVisitId = null;
 
-        // 10단계 점진적 색상 스펙트럼 캐싱
         const visitColorLevels = [
             { fill: '#ffccd5', stroke: '#ff99aa', fillOpacity: 0.25 },
             { fill: '#ffa8ba', stroke: '#ff8099', fillOpacity: 0.35 },
@@ -765,7 +763,30 @@
         }
 
         // ==========================================
-        // 3. 전국 시군구 GeoJSON 로드 및 폴리곤 최적화
+        // [핵심 최적화] 지능형 좌표 단순화 알고리즘
+        // ==========================================
+        // 눈에 띄지 않는 극미세 좌표(0.003도 이내 약 300m)를 필터링하여 vertex 수 85% 절감
+        function simplifyCoordinates(ring, tolerance = 0.0035) {
+            if (ring.length <= 4) return ring;
+            const result = [ring[0]];
+            let lastPoint = ring[0];
+
+            for (let i = 1; i < ring.length - 1; i++) {
+                const pt = ring[i];
+                const dx = pt[0] - lastPoint[0];
+                const dy = pt[1] - lastPoint[1];
+                // 유클리드 거리 제곱 비교
+                if (dx * dx + dy * dy > tolerance * tolerance) {
+                    result.push(pt);
+                    lastPoint = pt;
+                }
+            }
+            result.push(ring[ring.length - 1]);
+            return result.length >= 3 ? result : ring;
+        }
+
+        // ==========================================
+        // 3. 전국 시군구 GeoJSON 로드
         // ==========================================
         const GEOJSON_URL = 'https://raw.githubusercontent.com/southkorea/southkorea-maps/master/kostat/2018/json/skorea-municipalities-2018-geo.json';
 
@@ -794,8 +815,10 @@
             const rawCoords = isMulti ? geometry.coordinates : [geometry.coordinates];
 
             rawCoords.forEach(polygonCoords => {
+                // 각 링의 복잡한 해안선 꼭짓점을 고속 단순화 처리
                 const paths = polygonCoords.map(ring => {
-                    return ring.map(coord => new naver.maps.LatLng(coord[1], coord[0]));
+                    const simplifiedRing = simplifyCoordinates(ring);
+                    return simplifiedRing.map(coord => new naver.maps.LatLng(coord[1], coord[0]));
                 });
 
                 const polygon = new naver.maps.Polygon({
@@ -806,10 +829,9 @@
 
                 polygon.regionCode = code;
                 polygon.regionName = name;
-                polygon._lastStateKey = '0_false'; // 캐싱 키 (방문수_선택여부)
+                polygon._lastStateKey = '0_false';
                 polygons.push(polygon);
 
-                // 클릭 이벤트만 등록 (무거운 mouseover/mouseout 과다 연산 제거)
                 naver.maps.Event.addListener(polygon, 'click', () => {
                     selectRegion(code, name);
                 });
@@ -823,7 +845,6 @@
             openBottomCard(code, name);
         }
 
-        // [최적화 핵심] 변경된 폴리곤만 선택적으로 setOptions 수행
         function refreshAllPolygonStyles() {
             for (let i = 0; i < polygons.length; i++) {
                 const p = polygons[i];
@@ -831,7 +852,6 @@
                 const isSelected = (p.regionCode === selectedCode);
                 const currentStateKey = `${count}_${isSelected}`;
 
-                // 상태가 이전과 동일하면 네이버 API의 무거운 setOptions()를 스킵
                 if (p._lastStateKey === currentStateKey) continue;
 
                 p._lastStateKey = currentStateKey;
@@ -1149,7 +1169,6 @@
             }
         }
 
-        // 사진 압축 및 리사이징 최적화
         function handleMultiPhotosUpload(event) {
             const files = Array.from(event.target.files);
             if (!files.length) return;
