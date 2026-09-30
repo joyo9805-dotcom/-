@@ -46,6 +46,7 @@
             border-radius: 16px;
             box-shadow: 0 8px 24px rgba(0, 0, 0, 0.12);
             min-width: 230px;
+            pointer-events: auto;
         }
 
         .dashboard h1 {
@@ -116,6 +117,7 @@
             display: flex;
             flex-direction: column;
             gap: 6px;
+            pointer-events: none;
         }
         .legend-title {
             font-weight: 700;
@@ -239,7 +241,6 @@
             align-items: center;
         }
 
-        /* 날짜 선택 인풋 */
         .date-input-box {
             display: flex;
             align-items: center;
@@ -284,7 +285,6 @@
             border-color: #ff3366;
         }
 
-        /* 여러 장 사진 미리보기 컨테이너 */
         .photos-preview-list {
             display: none;
             gap: 8px;
@@ -371,7 +371,6 @@
             cursor: pointer;
         }
 
-        /* 정렬 바 */
         .sort-bar {
             display: flex;
             justify-content: space-between;
@@ -399,7 +398,6 @@
             cursor: pointer;
         }
 
-        /* 방문 타임라인 목록 */
         .visits-container {
             display: flex;
             flex-direction: column;
@@ -449,7 +447,6 @@
             word-break: break-word;
         }
 
-        /* 방문 카드의 가로 슬라이더 갤러리 */
         .visit-gallery {
             display: flex;
             gap: 8px;
@@ -472,7 +469,6 @@
             flex: 0 0 85%;
         }
 
-        /* 카드 하단 액션 버튼 그룹 (수정/삭제) */
         .visit-item-actions {
             display: flex;
             justify-content: flex-end;
@@ -489,9 +485,6 @@
             cursor: pointer;
             padding: 2px 4px;
         }
-        .btn-edit-visit:hover {
-            color: #1c7ed6;
-        }
 
         .btn-delete-visit {
             background: none;
@@ -500,9 +493,6 @@
             font-size: 12px;
             cursor: pointer;
             padding: 2px 4px;
-        }
-        .btn-delete-visit:hover {
-            color: #fa5252;
         }
 
         .empty-visits {
@@ -516,7 +506,6 @@
             display: none;
         }
 
-        /* 로딩 스피너 */
         #loading {
             position: absolute;
             top: 0;
@@ -593,19 +582,16 @@
             <button class="card-close" id="btn-close-card">✕</button>
         </div>
 
-        <!-- 새 방문 추가 버튼 -->
         <button class="btn-add-visit" id="btn-show-add">
             ➕ 새 방문 기록 추가하기
         </button>
 
-        <!-- 새 방문 작성 및 수정 영역 -->
         <div class="new-visit-box" id="new-visit-box">
             <div class="new-visit-title">
                 <span id="new-visit-badge-title">새로운 방문 등록</span>
                 <span id="photo-count-info" style="font-size: 11px; color: #868e96; font-weight: normal;">사진 0장 선택됨</span>
             </div>
 
-            <!-- 달력 날짜 선택창 -->
             <div class="date-input-box">
                 <span>🗓️ 방문 날짜</span>
                 <input type="date" class="visit-date-picker" id="visit-date-picker">
@@ -613,10 +599,8 @@
 
             <textarea class="memo-textarea" id="memo-input" placeholder="이번 방문의 소중한 순간이나 맛집을 기록해 보세요..."></textarea>
             
-            <!-- 다중 사진 미리보기 목록 -->
             <div class="photos-preview-list" id="photos-preview-list"></div>
 
-            <!-- 사진 선택 버튼 -->
             <label class="btn-upload-label" id="btn-upload-label" for="photo-file-input">
                 📷 사진 첨부하기 (여러 장 가능)
             </label>
@@ -628,7 +612,6 @@
             </div>
         </div>
 
-        <!-- 정렬 헤더 바 -->
         <div class="sort-bar" id="sort-bar" style="display: none;">
             <div class="sort-title">방문 타임라인</div>
             <button class="btn-sort-toggle" id="btn-sort-toggle">
@@ -637,7 +620,6 @@
             </button>
         </div>
 
-        <!-- 방문 타임라인 목록 -->
         <div class="visits-container" id="visits-container"></div>
     </div>
 
@@ -664,7 +646,7 @@
         const dbRef = db.ref('shared_conquered_regions');
 
         // ==========================================
-        // 2. 지도 초기화
+        // 2. 지도 초기화 (최적화 렌더러 옵션 적용)
         // ==========================================
         const map = new naver.maps.Map('map', {
             center: new naver.maps.LatLng(36.3504, 127.8845),
@@ -681,10 +663,10 @@
         let selectedCode = null;
         let selectedName = null;
         let currentPhotosArray = [];
-        let currentSortOrder = 'desc'; // 'desc'(최신순), 'asc'(오래된순)
-        let editingVisitId = null; // 수정 중인 글의 ID (null이면 새로 작성)
+        let currentSortOrder = 'desc';
+        let editingVisitId = null;
 
-        // 10단계 점진적 색상 스펙트럼
+        // 10단계 점진적 색상 스펙트럼 캐싱
         const visitColorLevels = [
             { fill: '#ffccd5', stroke: '#ff99aa', fillOpacity: 0.25 },
             { fill: '#ffa8ba', stroke: '#ff8099', fillOpacity: 0.35 },
@@ -699,19 +681,12 @@
         ];
 
         const defaultStyle = {
-            strokeColor: '#777777',
-            strokeOpacity: 0.4,
+            strokeColor: '#888888',
+            strokeOpacity: 0.35,
             strokeWeight: 1,
             fillColor: '#ffffff',
-            fillOpacity: 0.08,
+            fillOpacity: 0.05,
             clickable: true
-        };
-
-        const hoverStyle = {
-            strokeColor: '#111111',
-            strokeOpacity: 0.9,
-            strokeWeight: 2.2,
-            fillOpacity: 0.35
         };
 
         const selectedOutlineStyle = {
@@ -720,7 +695,6 @@
             strokeWeight: 3
         };
 
-        // 데이터 추출기
         function extractVisitsList(regionData) {
             if (!regionData) return [];
 
@@ -791,7 +765,7 @@
         }
 
         // ==========================================
-        // 3. 전국 시군구 GeoJSON 로드
+        // 3. 전국 시군구 GeoJSON 로드 및 폴리곤 최적화
         // ==========================================
         const GEOJSON_URL = 'https://raw.githubusercontent.com/southkorea/southkorea-maps/master/kostat/2018/json/skorea-municipalities-2018-geo.json';
 
@@ -832,26 +806,10 @@
 
                 polygon.regionCode = code;
                 polygon.regionName = name;
+                polygon._lastStateKey = '0_false'; // 캐싱 키 (방문수_선택여부)
                 polygons.push(polygon);
 
-                naver.maps.Event.addListener(polygon, 'mouseover', () => {
-                    if (polygon.regionCode !== selectedCode) {
-                        const count = getRegionVisitCount(code);
-                        const baseStyle = getStyleForVisits(count);
-                        polygon.setOptions({
-                            ...hoverStyle,
-                            fillColor: count > 0 ? baseStyle.fillColor : '#ffffff'
-                        });
-                    }
-                });
-
-                naver.maps.Event.addListener(polygon, 'mouseout', () => {
-                    if (polygon.regionCode !== selectedCode) {
-                        const count = getRegionVisitCount(code);
-                        polygon.setOptions(getStyleForVisits(count));
-                    }
-                });
-
+                // 클릭 이벤트만 등록 (무거운 mouseover/mouseout 과다 연산 제거)
                 naver.maps.Event.addListener(polygon, 'click', () => {
                     selectRegion(code, name);
                 });
@@ -865,21 +823,31 @@
             openBottomCard(code, name);
         }
 
+        // [최적화 핵심] 변경된 폴리곤만 선택적으로 setOptions 수행
         function refreshAllPolygonStyles() {
-            polygons.forEach(p => {
+            for (let i = 0; i < polygons.length; i++) {
+                const p = polygons[i];
                 const count = getRegionVisitCount(p.regionCode);
-                const isSelected = p.regionCode === selectedCode;
+                const isSelected = (p.regionCode === selectedCode);
+                const currentStateKey = `${count}_${isSelected}`;
 
-                let style = { ...getStyleForVisits(count) };
+                // 상태가 이전과 동일하면 네이버 API의 무거운 setOptions()를 스킵
+                if (p._lastStateKey === currentStateKey) continue;
+
+                p._lastStateKey = currentStateKey;
+                let targetStyle = getStyleForVisits(count);
 
                 if (isSelected) {
-                    style.strokeColor = selectedOutlineStyle.strokeColor;
-                    style.strokeOpacity = selectedOutlineStyle.strokeOpacity;
-                    style.strokeWeight = selectedOutlineStyle.strokeWeight;
+                    p.setOptions({
+                        ...targetStyle,
+                        strokeColor: selectedOutlineStyle.strokeColor,
+                        strokeOpacity: selectedOutlineStyle.strokeOpacity,
+                        strokeWeight: selectedOutlineStyle.strokeWeight
+                    });
+                } else {
+                    p.setOptions(targetStyle);
                 }
-
-                p.setOptions(style);
-            });
+            }
         }
 
         // ==========================================
@@ -981,7 +949,7 @@
                 let galleryHtml = '';
                 if (item.photos && item.photos.length > 0) {
                     const multiClass = item.photos.length > 1 ? 'multiple-photos' : '';
-                    const imgs = item.photos.map(p => `<img class="gallery-photo" src="${p}" alt="방문 사진">`).join('');
+                    const imgs = item.photos.map(p => `<img class="gallery-photo" src="${p}" loading="lazy" alt="방문 사진">`).join('');
                     galleryHtml = `<div class="visit-gallery ${multiClass}">${imgs}</div>`;
                 }
 
@@ -1003,12 +971,10 @@
                     </div>
                 `;
 
-                // 수정 버튼 클릭 이벤트
                 cardEl.querySelector('.btn-edit-visit').addEventListener('click', function() {
                     startEditVisit(item);
                 });
 
-                // 삭제 버튼 클릭 이벤트
                 cardEl.querySelector('.btn-delete-visit').addEventListener('click', function() {
                     deleteVisit(item.id);
                 });
@@ -1034,7 +1000,7 @@
         }
 
         function showNewVisitForm() {
-            editingVisitId = null; // 신규 작성 모드
+            editingVisitId = null;
             const count = getRegionVisitCount(selectedCode);
             document.getElementById('new-visit-badge-title').textContent = `${count + 1}번째 방문 기록하기`;
             btnSaveRecord.textContent = '등록하기';
@@ -1049,15 +1015,13 @@
             memoInput.focus();
         }
 
-        // 특정 기록 수정 시작
         function startEditVisit(item) {
-            editingVisitId = item.id; // 수정 모드 설정
+            editingVisitId = item.id;
             document.getElementById('new-visit-badge-title').textContent = `${item.originalOrder}번째 방문 수정하기`;
             btnSaveRecord.textContent = '수정 완료';
             newVisitBox.style.display = 'flex';
             btnShowAdd.style.display = 'none';
 
-            // 기존 데이터 폼에 채우기
             memoInput.value = item.memo || '';
             
             if (item.visitDate) {
@@ -1070,11 +1034,9 @@
                 visitDatePicker.value = new Date().toISOString().split('T')[0];
             }
 
-            // 기존 사진 불러오기 (복사본)
             currentPhotosArray = item.photos ? [...item.photos] : [];
             renderPreviewThumbnails();
             
-            // 작성 폼으로 부드럽게 스크롤
             bottomCard.scrollTo({ top: 0, behavior: 'smooth' });
             memoInput.focus();
         }
@@ -1124,7 +1086,6 @@
             renderPreviewThumbnails();
         }
 
-        // 방문 저장 또는 수정 저장
         function saveVisitRecord() {
             if (!selectedCode) return;
 
@@ -1136,7 +1097,6 @@
             const updates = {};
             updates['name'] = selectedName;
 
-            // 구버전 단일 데이터 보존 (마이그레이션)
             if (!currentData.visits && existingList.length > 0) {
                 existingList.forEach((legacyItem, idx) => {
                     const legacyKey = (legacyItem.id === 'legacy_initial') ? `legacy_${idx}` : legacyItem.id;
@@ -1153,8 +1113,6 @@
             }
 
             const targetKey = editingVisitId ? editingVisitId : regionRef.child('visits').push().key;
-
-            // legacy_initial 글을 수정하는 경우 visits/legacy_0 키로 저장되도록 보정
             const finalKey = (targetKey === 'legacy_initial') ? 'legacy_0' : targetKey;
 
             updates[`visits/${finalKey}`] = {
@@ -1191,9 +1149,7 @@
             }
         }
 
-        // ==========================================
-        // 5. 여러 장의 사진 압축 및 처리
-        // ==========================================
+        // 사진 압축 및 리사이징 최적화
         function handleMultiPhotosUpload(event) {
             const files = Array.from(event.target.files);
             if (!files.length) return;
@@ -1204,7 +1160,7 @@
                     const img = new Image();
                     img.onload = function() {
                         const canvas = document.createElement('canvas');
-                        const MAX_WIDTH = 800;
+                        const MAX_WIDTH = 750;
                         let width = img.width;
                         let height = img.height;
 
@@ -1229,7 +1185,7 @@
         }
 
         // ==========================================
-        // 6. Firebase 실시간 동기화
+        // 5. Firebase 실시간 동기화
         // ==========================================
         function listenToDatabaseChanges() {
             dbRef.on('value', snapshot => {
